@@ -1,0 +1,102 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/commerce_operating_platform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:Tanvi9903@}
+
+  # SMTP is optional. The application can run without email configuration.
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:hello.radigtalstudio@gmail.com}
+    password: ${SMTP_PASSWORD:sbqjrnitipompjuc}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: Asia/Kolkata
+
+  jackson:
+    default-property-inclusion: non_null
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-development-secret-to-a-minimum-32-character-value}
+    access-minutes: ${JWT_ACCESS_MINUTES:15}
+    refresh-days: ${JWT_REFRESH_DAYS:30}
+    invite-days: ${JWT_INVITE_DAYS:7}
+
+  cors-origins: ${CORS_ORIGINS:http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000}
+
+  expose-verification-token: ${EXPOSE_VERIFICATION_TOKEN:true}
+
+  public-app-url: ${PUBLIC_APP_URL=http://localhost:5500/frontend}
+
+  # Keep true for local invitation testing.
+  # Set false in production after SMTP is configured.
+  expose-invitation-link: ${EXPOSE_INVITATION_LINK:false}
+
+  mail:
+    from: ${MAIL_FROM:hello.radigtalstudio@gmail.com}
+    from-name: ${MAIL_FROM_NAME:RA Studio Commerce Platform}
+
+  # Encrypts marketplace_connection.credential_ref (AES-256-GCM, see
+  # CredentialCipherService). This property was missing entirely — without
+  # it the app fails to start with "Could not resolve placeholder
+  # 'app.credential-encryption-key'" even though CREDENTIAL_ENCRYPTION_KEY
+  # was already documented in .env.example. Fixed here.
+  credential-encryption-key: ${CREDENTIAL_ENCRYPTION_KEY:change-this-development-secret-to-a-minimum-32-character-value}
+
+  # Phase 6 (Product Management) — local storage for uploaded product images.
+  uploads-dir: ${UPLOADS_DIR:./uploads}
+
+  # Phase 18 — WhatsApp Infrastructure. MOCK (default) needs no credentials at all — see
+  # MockWhatsAppProvider. Switching to REAL activates RealWhatsAppProvider, which needs the four
+  # WHATSAPP_* values below from a real Meta WhatsApp Business / Cloud API setup (or a BSP that
+  # exposes a Cloud-API-compatible endpoint, via WHATSAPP_API_BASE_URL).
+  whatsapp:
+    mode: ${WHATSAPP_MODE:MOCK}
+    api-base-url: ${WHATSAPP_API_BASE_URL:https://graph.facebook.com}
+    api-version: ${WHATSAPP_API_VERSION:v19.0}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    business-account-id: ${WHATSAPP_BUSINESS_ACCOUNT_ID:}
+    webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+
+  # Phase 20 — Retention Marketing. How often the campaign step scheduler checks for due journey
+  # steps to send, in milliseconds.
+  retention:
+    scheduler-interval-ms: ${RETENTION_SCHEDULER_INTERVAL_MS:60000}
+
+  # Phase 19 — Message Templates. How often TemplateApprovalPollingJob polls a still-pending WhatsApp
+  # template's approval status (REAL mode only — MOCK resolves instantly and this job finds nothing to poll).
+  template:
+    approval-poll-interval-ms: ${TEMPLATE_APPROVAL_POLL_INTERVAL_MS:300000}
+
+  # Phase 16 — Business Intelligence. How often BiGeneratorService recomputes trend/forecast/recommendation
+  # insights for every organization with order activity, in milliseconds.
+  bi:
+    scheduler-interval-ms: ${BI_SCHEDULER_INTERVAL_MS:1800000}
+
+  # Phase 22 — Bulk Sharing / Broadcast. BulkSendService#sendAsync processes recipients in batches of this
+  # size, pausing batch-delay-ms between batches, to respect WhatsApp/ESP rate limits on a large list.
+  broadcast:
+    batch-size: ${BULK_SEND_BATCH_SIZE:20}
+    batch-delay-ms: ${BULK_SEND_BATCH_DELAY_MS:1000}
+
+logging:
+  level:
+    com.rastudio.commerce: INFO

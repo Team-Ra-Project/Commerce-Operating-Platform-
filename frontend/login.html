@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — RA Studio Commerce Operations Platform</title>
+<link rel="icon" type="image/png" href="assets/ra-studio-logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="login-panel">
+    <div class="login-brand">
+      <div class="brand-mark"><img src="assets/ra-studio-logo.png" alt="RA Studio"></div>
+      <div class="brand-name">RA Studio<span>Commerce Operations Platform</span></div>
+    </div>
+    <h1 class="login-title" id="auth-title">Sign in to your workspace</h1>
+    <p class="login-sub" id="auth-subtitle">One console for products, orders, inventory and every marketplace you sell on.</p>
+
+    <form id="login-form" class="login-form">
+      <label class="field-label" for="login-email">Work email</label>
+       <input type="email" id="login-email" class="field-input" placeholder="you@company.com" required>
+
+      <label class="field-label" for="login-password">Password</label>
+       <input type="password" id="login-password" class="field-input" placeholder="••••••••" required>
+
+      <div class="login-row">
+        <label class="checkbox-row"><input type="checkbox" checked> Keep me signed in</label>
+        <a href="#" class="link-muted" onclick="return false;">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn-primary btn-block" id="login-btn">Sign in</button>
+      <p class="login-hint" id="login-hint">Sign in with your verified workspace account.</p>
+      <p class="login-hint">New here? <a href="create-workspace.html" class="link-muted">Create a workspace</a></p>
+    </form>
+  </div>
+  <div class="login-side">
+    <div class="login-side-inner">
+      <div class="quote-mark">"</div>
+      <p class="login-quote">RA Studio gave us one screen for seven marketplaces. We cut stockouts by 34% in a quarter.</p>
+      <p class="login-quote-attr">— VP Operations, DTC Retail Group</p>
+      <div class="login-stats">
+        <div><strong>7</strong><span>Marketplaces synced</span></div>
+        <div><strong>2.4M</strong><span>Orders processed</span></div>
+        <div><strong>99.98%</strong><span>Sync uptime</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-root" class="toast-root"></div>
+
+<script src="js/api/api.js"></script>
+<script>
+  // If already signed in (e.g. browser back to /login.html), skip straight to the dashboard.
+  if (localStorage.getItem("ra_access_token")) { location.href = "dashboard.html"; }
+
+  var loginForm = document.getElementById("login-form");
+  var emailFromRegistration = new URLSearchParams(location.search).get("email");
+  if (emailFromRegistration) document.getElementById("login-email").value = emailFromRegistration;
+
+  loginForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = document.getElementById("login-btn");
+    btn.textContent = "Signing in…";
+    btn.disabled = true;
+    api.auth.login(document.getElementById("login-email").value, document.getElementById("login-password").value)
+      .then(function (session) {
+        localStorage.setItem("ra_access_token", session.accessToken);
+        localStorage.setItem("ra_refresh_token", session.refreshToken);
+        localStorage.setItem("ra_user", JSON.stringify(session.user));
+        location.href = "dashboard.html";
+      })
+      .catch(function (error) {
+        document.getElementById("login-hint").textContent = error.message;
+        btn.textContent = "Sign in";
+        btn.disabled = false;
+      });
+  });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory Detail — RA Studio Commerce Operations Platform</title>
+<link rel="icon" type="image/png" href="../assets/ra-studio-logo.png">
+<link rel="stylesheet" href="../css/style.css">
+<script>window.__BASE__ = "../"; window.__MODULE__ = "inventory";</script>
+</head>
+<body>
+
+<div id="app-shell" class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark small"><img src="../assets/ra-studio-logo.png" alt="RA Studio"></div>
+      <span class="sidebar-brand-name">RA Studio</span>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"><!-- rendered by shell.js --></nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-plan">
+        <span class="plan-badge">ENTERPRISE</span>
+        <p>Workspace: Northwind Retail Co.</p>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="sidebar-toggle" title="Toggle sidebar">☰</button>
+        <div class="search-box">
+          <span class="search-icon">⌕</span>
+          <input type="text" id="global-search" placeholder="Search products, orders, customers…">
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="notif-btn" title="Notifications">
+          🔔<span class="notif-dot" id="notif-dot"></span>
+        </button>
+        <div class="topbar-divider"></div>
+        <div class="user-chip" id="user-menu-btn">
+          <div class="avatar">AN</div>
+          <div class="user-chip-text">
+            <strong>Alex Nair</strong>
+            <span>Operations Admin</span>
+          </div>
+          <span class="chevron">⌄</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="notif-panel hidden" id="notif-panel"></div>
+    <div class="user-panel hidden" id="user-panel">
+      <a href="../settings/index.html">Account settings</a>
+      <a href="../settings/index.html">Workspace settings</a>
+      <a href="#" id="logout-link">Sign out</a>
+    </div>
+
+    <main class="content" id="content">
+      <!-- page content rendered by js/pages/*.js -->
+    </main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root" class="toast-root"></div>
+
+<script src="../js/core/utils.js"></script>
+<script src="../js/data/data.js"></script>
+<script src="../js/api/api.js"></script>
+<script src="../js/core/shell.js"></script>
+<script src="../js/pages/inventory.js"></script>
+<script>
+  initShell();
+  initInventoryDetail();
+</script>
+</body>
+</html>

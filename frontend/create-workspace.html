@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create workspace — RA Studio Commerce Operations Platform</title>
+<link rel="icon" type="image/png" href="assets/ra-studio-logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-screen">
+  <div class="login-panel">
+    <div class="login-brand">
+      <div class="brand-mark"><img src="assets/ra-studio-logo.png" alt="RA Studio"></div>
+      <div class="brand-name">RA Studio<span>Commerce Operations Platform</span></div>
+    </div>
+    <h1 class="login-title">Create your workspace</h1>
+    <p class="login-sub">Set up your business profile and owner account.</p>
+
+    <form id="register-form" class="login-form">
+      <label class="field-label" for="organization-name">Business / workspace name</label>
+      <input type="text" id="organization-name" class="field-input" placeholder="Your business name" required>
+      <label class="field-label" for="owner-name">Your full name</label>
+      <input type="text" id="owner-name" class="field-input" placeholder="Your name" required>
+      <label class="field-label" for="register-email">Work email</label>
+      <input type="email" id="register-email" class="field-input" placeholder="you@company.com" required>
+      <label class="field-label" for="register-password">Password</label>
+      <input type="password" id="register-password" class="field-input" placeholder="At least 8 characters" minlength="8" required>
+      <button type="submit" class="btn-primary btn-block" id="register-btn">Create workspace</button>
+      <p class="login-hint" id="register-hint">You’ll verify your email before signing in.</p>
+      <p class="login-hint">Already have an account? <a href="login.html" class="link-muted">Sign in</a></p>
+    </form>
+  </div>
+  <div class="login-side"><div class="login-side-inner">
+    <div class="quote-mark">"</div>
+    <p class="login-quote">Bring products, stock, orders and customer conversations into one workspace.</p>
+    <p class="login-quote-attr">— RA Studio Commerce Operations</p>
+  </div></div>
+</div>
+<script src="js/api/api.js"></script>
+<script>
+  if (localStorage.getItem("ra_access_token")) location.href = "dashboard.html";
+  document.getElementById("register-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var button = document.getElementById("register-btn");
+    var hint = document.getElementById("register-hint");
+    var email = document.getElementById("register-email").value.trim();
+    button.disabled = true;
+    button.textContent = "Creating workspace…";
+    api.auth.register({
+      organizationName: document.getElementById("organization-name").value.trim(),
+      fullName: document.getElementById("owner-name").value.trim(),
+      email: email,
+      password: document.getElementById("register-password").value,
+      currency: "INR"
+    }).then(function (result) {
+      if (!result.verificationToken) {
+        hint.textContent = "Workspace created. Check your email to verify your account, then sign in.";
+        button.textContent = "Workspace created";
+        return;
+      }
+      return api.auth.verifyEmail(result.verificationToken).then(function () {
+        hint.textContent = "Workspace created and email verified. Redirecting to sign in…";
+        button.textContent = "Workspace created";
+        setTimeout(function () { location.href = "login.html?email=" + encodeURIComponent(email); }, 900);
+      });
+    }).catch(function (error) {
+      hint.textContent = error.message;
+      button.disabled = false;
+      button.textContent = "Create workspace";
+    });
+  });
+</script>
+</body>
+</html>

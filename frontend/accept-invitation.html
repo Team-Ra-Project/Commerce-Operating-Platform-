@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accept invitation — RA Studio Commerce Operations Platform</title>
+<link rel="icon" type="image/png" href="assets/ra-studio-logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-screen">
+  <div class="login-panel">
+    <div class="login-brand">
+      <div class="brand-mark"><img src="assets/ra-studio-logo.png" alt="RA Studio"></div>
+      <div class="brand-name">RA Studio<span>Commerce Operations Platform</span></div>
+    </div>
+
+    <div id="invite-loading">
+      <h1 class="login-title">Loading your invitation…</h1>
+      <p class="login-sub">Hang tight while we look up this invite.</p>
+    </div>
+
+    <div id="invite-invalid" style="display:none;">
+      <h1 class="login-title">This invitation link isn't valid</h1>
+      <p class="login-sub" id="invite-error-message">It may have expired or already been used. Ask your admin to resend it.</p>
+      <p class="login-hint"><a href="login.html" class="link-muted">Back to sign in</a></p>
+    </div>
+
+    <div id="invite-form-wrap" style="display:none;">
+      <h1 class="login-title">Join <span id="invite-org-name">your workspace</span></h1>
+      <p class="login-sub" id="invite-sub">Set a password to activate your account.</p>
+
+      <form id="accept-form" class="login-form">
+        <label class="field-label">Name</label>
+        <input type="text" id="invite-name" class="field-input" disabled>
+        <label class="field-label">Email</label>
+        <input type="text" id="invite-email" class="field-input" disabled>
+        <label class="field-label">Role</label>
+        <input type="text" id="invite-role" class="field-input" disabled>
+        <label class="field-label" for="accept-password">Set a password</label>
+        <input type="password" id="accept-password" class="field-input" placeholder="At least 8 characters" minlength="8" required>
+        <button type="submit" class="btn-primary btn-block" id="accept-btn">Accept invitation &amp; sign in</button>
+        <p class="login-hint" id="accept-hint"></p>
+      </form>
+    </div>
+  </div>
+  <div class="login-side"><div class="login-side-inner">
+    <div class="quote-mark">"</div>
+    <p class="login-quote">Bring products, stock, orders and customer conversations into one workspace.</p>
+    <p class="login-quote-attr">— RA Studio Commerce Operations</p>
+  </div></div>
+</div>
+<script src="js/api/api.js"></script>
+<script>
+  var token = new URLSearchParams(location.search).get("token");
+  var loadingEl = document.getElementById("invite-loading");
+  var invalidEl = document.getElementById("invite-invalid");
+  var formWrapEl = document.getElementById("invite-form-wrap");
+
+  if (!token) {
+    loadingEl.style.display = "none";
+    document.getElementById("invite-error-message").textContent = "No invitation token was found in this link.";
+    invalidEl.style.display = "block";
+  } else {
+    var ROLE_LABELS = {
+      BUSINESS_OWNER_ADMIN: "Business Owner / Admin",
+      OPERATIONS_MANAGER: "Operations Manager",
+      MARKETING_MANAGER: "Marketing Manager",
+      SUPPORT_CRM_AGENT: "Support / CRM Agent",
+      WAREHOUSE_STAFF: "Warehouse Staff",
+      ANALYST_VIEWER: "Analyst / Viewer"
+    };
+    api.users.invitationPreview(token).then(function (preview) {
+      loadingEl.style.display = "none";
+      formWrapEl.style.display = "block";
+      document.getElementById("invite-org-name").textContent = preview.organizationName;
+      document.getElementById("invite-sub").textContent = "You were invited as " + preview.email + " — set a password to activate your account.";
+      document.getElementById("invite-name").value = preview.fullName;
+      document.getElementById("invite-email").value = preview.email;
+      document.getElementById("invite-role").value = ROLE_LABELS[preview.role] || preview.role;
+    }).catch(function (error) {
+      loadingEl.style.display = "none";
+      document.getElementById("invite-error-message").textContent = error.message;
+      invalidEl.style.display = "block";
+    });
+
+    document.getElementById("accept-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = document.getElementById("accept-btn");
+      var hint = document.getElementById("accept-hint");
+      btn.disabled = true;
+      btn.textContent = "Activating your account…";
+      api.users.acceptInvitation(token, document.getElementById("accept-password").value)
+        .then(function (session) {
+          localStorage.setItem("ra_access_token", session.accessToken);
+          localStorage.setItem("ra_refresh_token", session.refreshToken);
+          localStorage.setItem("ra_user", JSON.stringify(session.user));
+          hint.textContent = "You're in! Redirecting to your dashboard…";
+          location.href = "dashboard.html";
+        })
+        .catch(function (error) {
+          hint.textContent = error.message;
+          btn.disabled = false;
+          btn.textContent = "Accept invitation & sign in";
+        });
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+package com.rastudio.commerce.user; import java.util.*; import org.springframework.data.jpa.repository.JpaRepository; public interface RefreshTokenRepository extends JpaRepository<RefreshToken,Long>{ Optional<RefreshToken> findByTokenHashAndRevokedFalse(String tokenHash); List<RefreshToken> findByUserIdAndRevokedFalse(Long userId); }
