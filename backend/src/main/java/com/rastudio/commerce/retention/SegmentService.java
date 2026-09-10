@@ -1,6 +1,8 @@
 package com.rastudio.commerce.retention;
 
 import com.rastudio.commerce.common.ApiException;
+import com.rastudio.commerce.customer.Customer;
+import com.rastudio.commerce.customer.CustomerRepository;
 import com.rastudio.commerce.order.CustomerOrder;
 import com.rastudio.commerce.order.CustomerOrderRepository;
 import com.rastudio.commerce.retention.SegmentDtos.*;
@@ -25,7 +27,7 @@ public class SegmentService {
   private record DefaultSegment(String name, SegmentRuleKey ruleKey, String description) {}
 
   private static final List<DefaultSegment> DEFAULT_SEGMENTS = List.of(
-      new DefaultSegment("New Customers", SegmentRuleKey.NEW, "Customers with exactly one order to date"),
+      new DefaultSegment("New Customers", SegmentRuleKey.NEW, "Customers with no repeat purchase, including manually added customers"),
       new DefaultSegment("Recent Buyers", SegmentRuleKey.RECENT_BUYER, "Ordered within the last " + RECENT_BUYER_WINDOW_DAYS + " days"),
       new DefaultSegment("Loyal Customers", SegmentRuleKey.LOYAL, "Placed " + LOYAL_MIN_ORDERS + " or more orders"),
       new DefaultSegment("VIP Customers", SegmentRuleKey.VIP, "Lifetime spend of " + VIP_LIFETIME_SPEND_THRESHOLD + " or more"),
@@ -36,11 +38,14 @@ public class SegmentService {
   private final SegmentRepository segments;
   private final CampaignRepository campaigns;
   private final CustomerOrderRepository orders;
+  private final CustomerRepository customers;
 
-  public SegmentService(SegmentRepository segments, CampaignRepository campaigns, CustomerOrderRepository orders) {
+  public SegmentService(SegmentRepository segments, CampaignRepository campaigns, CustomerOrderRepository orders,
+      CustomerRepository customers) {
     this.segments = segments;
     this.campaigns = campaigns;
     this.orders = orders;
+    this.customers = customers;
   }
 
   @Transactional
@@ -121,9 +126,9 @@ public class SegmentService {
   }
 
   /**
-   * Computes which customers currently belong to a rule-key-based segment, straight from real order data —
-   * evaluated fresh every time (list, activate-campaign, enroll), not cached, so it always reflects current
-   * order history. CART_ABANDONED always returns empty (see class javadoc).
+   * Computes which customers currently belong to a rule-key-based segment from the real customer and order
+   * tables — evaluated fresh every time (list, activate-campaign, enroll), not cached, so it reflects current
+   * CRM records and order history. CART_ABANDONED always returns empty (see class javadoc).
    */
   List<Long> memberIds(Long organizationId, SegmentRuleKey ruleKey) {
     if (ruleKey == SegmentRuleKey.CART_ABANDONED) return List.of();
@@ -132,9 +137,14 @@ public class SegmentService {
     Map<Long, List<CustomerOrder>> byCustomer = allOrders.stream().collect(Collectors.groupingBy(o -> o.customerId));
     LocalDateTime now = LocalDateTime.now();
 
-    return byCustomer.entrySet().stream()
-        .filter(e -> matchesRule(e.getValue(), ruleKey, now))
-        .map(Map.Entry::getKey)
+    /*
+     * Use the customer table as the audience source, not only customer_order.
+     * A customer added manually in CRM may not have a marketplace order row yet,
+     * but is still a valid "New Customer" audience member for retention.
+     */
+    return customers.findByOrganizationIdOrderByCreatedAtDesc(organizationId).stream()
+        .filter(customer -> matchesRule(byCustomer.getOrDefault(customer.id, List.of()), ruleKey, now))
+        .map(customer -> customer.id)
         .toList();
   }
 
@@ -144,7 +154,8 @@ public class SegmentService {
     BigDecimal lifetimeSpend = customerOrders.stream().map(o -> o.totalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
     return switch (ruleKey) {
-      case NEW -> orderCount == 1;
+      // Includes manually-added customers with no order yet, plus first-order customers.
+      case NEW -> orderCount <= 1;
       case RECENT_BUYER -> lastOrderAt != null && lastOrderAt.isAfter(now.minusDays(RECENT_BUYER_WINDOW_DAYS));
       case LOYAL -> orderCount >= LOYAL_MIN_ORDERS;
       case VIP -> lifetimeSpend.compareTo(VIP_LIFETIME_SPEND_THRESHOLD) >= 0;

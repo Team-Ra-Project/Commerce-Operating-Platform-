@@ -17,8 +17,13 @@ public class AnalyticsService {
   public record Summary(BigDecimal revenue, long orders, long units, BigDecimal averageOrderValue) {}
   public record Breakdown(String name, BigDecimal revenue, long orders, long units) {}
   public record Trend(String label, BigDecimal revenue, long orders) {}
+  public record Stat(String name, long value) {}
+  public record InventorySummary(long totalStock, long reservedStock, long availableStock,
+                                  long lowStockSkus, long totalSkus, long totalWarehouses) {}
+  public record InventoryReport(InventorySummary summary, List<Stat> byWarehouse, List<Stat> byCategory,
+                                 List<Stat> lowStockItems) {}
   public record Report(Summary summary, List<Breakdown> categories, List<Breakdown> marketplaces,
-                       List<Trend> trend) {}
+                       List<Trend> trend, List<Breakdown> products, InventoryReport inventory) {}
 
   public Report report(Long orgId, String type, String range, String marketplace, String category, Long warehouseId) {
     int days = "7".equals(range) ? 7 : "90".equals(range) ? 90 : 30;
@@ -35,9 +40,15 @@ public class AnalyticsService {
     long orders = number(s.get("orders")), units = number(s.get("units"));
     Summary summary = new Summary(revenue, orders, units,
         orders == 0 ? BigDecimal.ZERO : revenue.divide(BigDecimal.valueOf(orders), 2, java.math.RoundingMode.HALF_UP));
-    return new Report(summary, breakdown(orgId, from, marketplace, category, warehouseId, "c.name"),
+    // Every section is computed regardless of `type` so the frontend tabs (Sales, Revenue,
+    // Products, Inventory, Marketplaces) always have real data to render for their view,
+    // instead of all five tabs silently sharing the same order/category payload.
+    return new Report(summary,
+        breakdown(orgId, from, marketplace, category, warehouseId, "c.name"),
         breakdown(orgId, from, marketplace, category, warehouseId, "co.marketplace_name"),
-        trend(orgId, from, marketplace, category, warehouseId));
+        trend(orgId, from, marketplace, category, warehouseId),
+        breakdown(orgId, from, marketplace, category, warehouseId, "pr.name"),
+        inventoryReport(orgId, category, warehouseId));
   }
 
   private List<Breakdown> breakdown(Long orgId, LocalDateTime from, String marketplace, String category,
@@ -64,6 +75,39 @@ public class AnalyticsService {
     return jdbc.query("SELECT DATE_FORMAT(co.placed_at,'%Y-%m-%d') label, COALESCE(SUM(oi.line_total),0) revenue," +
         "COUNT(DISTINCT co.id) orders" + joins + w + " GROUP BY label ORDER BY label", (rs,i) ->
         new Trend(rs.getString("label"), rs.getBigDecimal("revenue"), rs.getLong("orders")), p.toArray());
+  }
+
+  private InventoryReport inventoryReport(Long orgId, String category, Long warehouseId) {
+    List<Object> p = new ArrayList<>(List.of(orgId));
+    String joins = " FROM inventory_item ii JOIN product_variant pv ON pv.id=ii.product_variant_id " +
+        "JOIN product pr ON pr.id=pv.product_id LEFT JOIN category c ON c.id=pr.category_id " +
+        "JOIN warehouse w ON w.id=ii.warehouse_id ";
+    String where = " WHERE pv.organization_id=?";
+    if (category != null && !category.isBlank() && !"All".equalsIgnoreCase(category)) {
+      where += " AND c.name=?"; p.add(category);
+    }
+    if (warehouseId != null) { where += " AND ii.warehouse_id=?"; p.add(warehouseId); }
+
+    Map<String,Object> s = jdbc.queryForMap("SELECT COALESCE(SUM(ii.stock_quantity),0) totalStock, " +
+        "COALESCE(SUM(ii.reserved_quantity),0) reservedStock, " +
+        "COALESCE(SUM(CASE WHEN ii.stock_quantity<=ii.low_stock_threshold THEN 1 ELSE 0 END),0) lowStockSkus, " +
+        "COUNT(DISTINCT pv.id) totalSkus, COUNT(DISTINCT w.id) totalWarehouses" + joins + where, p.toArray());
+    long totalStock = number(s.get("totalStock")), reservedStock = number(s.get("reservedStock"));
+    InventorySummary summary = new InventorySummary(totalStock, reservedStock, totalStock - reservedStock,
+        number(s.get("lowStockSkus")), number(s.get("totalSkus")), number(s.get("totalWarehouses")));
+
+    List<Stat> byWarehouse = jdbc.query("SELECT w.name name, COALESCE(SUM(ii.stock_quantity),0) value" +
+        joins + where + " GROUP BY w.name ORDER BY value DESC", (rs,i) ->
+        new Stat(rs.getString("name"), rs.getLong("value")), p.toArray());
+    List<Stat> byCategory = jdbc.query("SELECT COALESCE(c.name,'Uncategorized') name, " +
+        "COALESCE(SUM(ii.stock_quantity),0) value" + joins + where + " GROUP BY name ORDER BY value DESC", (rs,i) ->
+        new Stat(rs.getString("name"), rs.getLong("value")), p.toArray());
+    List<Stat> lowStockItems = jdbc.query("SELECT CONCAT(pr.name,' — ',pv.name,' (',w.name,')') name, " +
+        "ii.stock_quantity value" + joins + where + " AND ii.stock_quantity<=ii.low_stock_threshold " +
+        "ORDER BY ii.stock_quantity ASC LIMIT 10", (rs,i) ->
+        new Stat(rs.getString("name"), rs.getLong("value")), p.toArray());
+
+    return new InventoryReport(summary, byWarehouse, byCategory, lowStockItems);
   }
 
   private String filters(String where, List<Object> p, String marketplace, String category, Long warehouseId) {

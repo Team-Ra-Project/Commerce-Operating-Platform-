@@ -8,5 +8,7 @@ public interface MessageLogRepository extends JpaRepository<MessageLog, Long> {
 
   List<MessageLog> findByCampaignIdOrderByCreatedAtDesc(Long campaignId);
 
+  java.util.Optional<MessageLog> findByTrackingToken(String trackingToken);
+
   long countByCampaignIdAndStatus(Long campaignId, MessageLogStatus status);
 }

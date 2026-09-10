@@ -569,6 +569,7 @@ CREATE TABLE system_config (
   currency          VARCHAR(10) NOT NULL DEFAULT 'INR',
   two_factor_enabled TINYINT(1) NOT NULL DEFAULT 1,
   email_digest_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  facebook_ads_url  VARCHAR(500) NULL,
   updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_cfg_org FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

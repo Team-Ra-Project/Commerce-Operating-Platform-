@@ -17,6 +17,11 @@ function reportValue(row) { return Number(row.revenue ?? row.value ?? 0); }
 function reportTrend(report) {
   return (report.trend || []).map(x => ({ label: x.label, value: reportValue(x) }));
 }
+function statTable(rows, cols) {
+  if (!rows.length) return analyticsEmpty();
+  return `<div class="table-wrap"><table class="data-table"><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
 function analyticsEmpty(message = "No data is available for these filters.") {
   return `<div class="empty-state"><strong>${message}</strong><p class="text-muted">Try changing the date range or filters.</p></div>`;
 }
@@ -64,23 +69,58 @@ async function loadAnalyticsReport() {
 }
 function drawReportBody(report) {
   const body = $("#report-body");
-  if (!report || (!report.summary && !(report.categories || []).length && !(report.marketplaces || []).length && !(report.trend || []).length)) {
-    body.innerHTML = analyticsEmpty(); return;
-  }
+  const type = analyticsState.reportType;
+  const hasAnyData = report && (report.summary || (report.categories || []).length || (report.marketplaces || []).length ||
+    (report.trend || []).length || (report.products || []).length || (report.inventory && report.inventory.summary && report.inventory.summary.totalSkus));
+  if (!hasAnyData) { body.innerHTML = analyticsEmpty(); return; }
+
+  if (type === "inventory") { body.innerHTML = renderInventoryReport(report.inventory || {}); window._lastReportData = report; return; }
+
   const categories = (report.categories || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
   const marketplaces = (report.marketplaces || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
+  const products = (report.products || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
   const trend = reportTrend(report), s = report.summary || {};
-  body.innerHTML = `<div class="card mb-24"><div class="stats-grid">
+  const statsHtml = `<div class="card mb-24"><div class="stats-grid">
     <div><span class="text-muted">Revenue</span><strong>${money(Number(s.revenue || 0))}</strong></div>
     <div><span class="text-muted">Orders</span><strong>${Number(s.orders || 0).toLocaleString()}</strong></div>
     <div><span class="text-muted">Units</span><strong>${Number(s.units || 0).toLocaleString()}</strong></div>
     <div><span class="text-muted">Average order value</span><strong>${money(Number(s.averageOrderValue || 0))}</strong></div>
-  </div></div>
-  <div class="two-col"><div class="card chart-wrap"><div class="card-head"><h3>Revenue by Category</h3></div>${categories.length ? barChartSVG(categories, { height: 230 }) : analyticsEmpty()}</div>
-  <div class="card chart-wrap"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 230 }) : analyticsEmpty()}</div></div>
-  <div class="card mt-24"><div class="card-head"><h3>Sales Trend</h3></div>${trend.length ? lineChartSVG(trend, { height: 220 }) : analyticsEmpty()}</div>
-  <div class="card mt-24"><div class="card-head"><h3>${reportTitle(analyticsState.reportType)}</h3></div><p class="text-muted" style="font-size:13px;line-height:1.6;">${trend.length ? `This report contains ${trend.length} periods of live data for the selected filters.` : "No trend data was returned for the selected filters."}</p></div>`;
+  </div></div>`;
+  const trendHtml = `<div class="card mt-24"><div class="card-head"><h3>Sales Trend</h3></div>${trend.length ? lineChartSVG(trend, { height: 220 }) : analyticsEmpty()}</div>`;
+
+  let mainHtml;
+  if (type === "product") {
+    const rows = (report.products || []).slice(0, 10).map(x => [reportLabel(x), money(reportValue(x)), Number(x.orders || 0).toLocaleString(), Number(x.units || 0).toLocaleString()]);
+    mainHtml = `<div class="card chart-wrap mb-24"><div class="card-head"><h3>Top Products by Revenue</h3></div>${products.length ? barChartSVG(products.slice(0, 10), { height: 260 }) : analyticsEmpty()}</div>
+      <div class="card"><div class="card-head"><h3>Product Breakdown</h3></div>${statTable(rows, ["Product", "Revenue", "Orders", "Units"])}</div>`;
+  } else if (type === "marketplace") {
+    const rows = (report.marketplaces || []).slice(0, 10).map(x => [reportLabel(x), money(reportValue(x)), Number(x.orders || 0).toLocaleString(), Number(x.units || 0).toLocaleString()]);
+    mainHtml = `<div class="card chart-wrap mb-24"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 260 }) : analyticsEmpty()}</div>
+      <div class="card"><div class="card-head"><h3>Marketplace Breakdown</h3></div>${statTable(rows, ["Marketplace", "Revenue", "Orders", "Units"])}</div>`;
+  } else {
+    mainHtml = `<div class="two-col"><div class="card chart-wrap"><div class="card-head"><h3>Revenue by Category</h3></div>${categories.length ? barChartSVG(categories, { height: 230 }) : analyticsEmpty()}</div>
+      <div class="card chart-wrap"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 230 }) : analyticsEmpty()}</div></div>`;
+  }
+
+  body.innerHTML = `${statsHtml}${mainHtml}${trendHtml}
+    <div class="card mt-24"><div class="card-head"><h3>${reportTitle(type)}</h3></div><p class="text-muted" style="font-size:13px;line-height:1.6;">${trend.length ? `This report contains ${trend.length} periods of live data for the selected filters.` : "No trend data was returned for the selected filters."}</p></div>`;
   window._lastReportData = report;
+}
+function renderInventoryReport(inv) {
+  const s = inv.summary || {};
+  const byWarehouse = (inv.byWarehouse || []).map(x => ({ label: x.name, value: Number(x.value || 0) }));
+  const byCategory = (inv.byCategory || []).map(x => ({ label: x.name, value: Number(x.value || 0) }));
+  const lowStockRows = (inv.lowStockItems || []).map(x => [x.name, Number(x.value || 0).toLocaleString(),
+    Number(x.value || 0) === 0 ? `<span class="badge red">Out of stock</span>` : `<span class="badge amber">Low stock</span>`]);
+  return `<div class="card mb-24"><div class="stats-grid">
+      <div><span class="text-muted">Total stock</span><strong>${Number(s.totalStock || 0).toLocaleString()}</strong></div>
+      <div><span class="text-muted">Reserved</span><strong>${Number(s.reservedStock || 0).toLocaleString()}</strong></div>
+      <div><span class="text-muted">Available</span><strong>${Number(s.availableStock || 0).toLocaleString()}</strong></div>
+      <div><span class="text-muted">Low-stock SKUs</span><strong>${Number(s.lowStockSkus || 0).toLocaleString()}</strong></div>
+    </div></div>
+    <div class="two-col"><div class="card chart-wrap"><div class="card-head"><h3>Stock by Warehouse</h3></div>${byWarehouse.length ? barChartSVG(byWarehouse, { height: 230 }) : analyticsEmpty("No warehouses with stock yet.")}</div>
+    <div class="card chart-wrap"><div class="card-head"><h3>Stock by Category</h3></div>${byCategory.length ? barChartSVG(byCategory, { height: 230 }) : analyticsEmpty("No categorized stock yet.")}</div></div>
+    <div class="card mt-24"><div class="card-head"><h3>Low Stock Items</h3></div>${lowStockRows.length ? statTable(lowStockRows, ["Item", "Stock", "Status"]) : analyticsEmpty("Nothing is low on stock right now.")}</div>`;
 }
 async function exportAnalytics(fmt) {
   if (!analyticsReport) { toast("Generate a report before exporting.", "error"); return; }
@@ -102,12 +142,32 @@ function renderReportDetailPage() {
     bodyHtml: `<div id="report-detail-body"><div class="loading-state">Loading report…</div></div>` });
   api.analytics.report(analyticsFilters(state)).then(report => {
     const target = $("#report-detail-body"); if (!target) return;
-    if (!report || (!report.summary && !(report.categories || []).length && !(report.trend || []).length)) { target.innerHTML = analyticsEmpty(); return; }
+    const hasAnyData = report && (report.summary || (report.categories || []).length || (report.marketplaces || []).length ||
+      (report.trend || []).length || (report.products || []).length || (report.inventory && report.inventory.summary && report.inventory.summary.totalSkus));
+    if (!hasAnyData) { target.innerHTML = analyticsEmpty(); return; }
+
+    if (state.reportType === "inventory") { target.innerHTML = renderInventoryReport(report.inventory || {}); return; }
+
     const categories = (report.categories || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
     const marketplaces = (report.marketplaces || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
+    const products = (report.products || []).map(x => ({ label: reportLabel(x), value: reportValue(x) }));
     const trend = reportTrend(report);
     const s = report.summary || {};
-    target.innerHTML = `<div class="card mb-16" style="box-shadow:none;"><div class="stats-grid"><div><span class="text-muted">Revenue</span><strong>${money(Number(s.revenue || 0))}</strong></div><div><span class="text-muted">Orders</span><strong>${Number(s.orders || 0).toLocaleString()}</strong></div><div><span class="text-muted">Units</span><strong>${Number(s.units || 0).toLocaleString()}</strong></div><div><span class="text-muted">Average order value</span><strong>${money(Number(s.averageOrderValue || 0))}</strong></div></div></div><div class="two-col"><div class="card chart-wrap" style="box-shadow:none;"><div class="card-head"><h3>Revenue by Category</h3></div>${categories.length ? barChartSVG(categories, { height: 220 }) : analyticsEmpty()}</div><div class="card chart-wrap" style="box-shadow:none;"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 220 }) : analyticsEmpty()}</div></div><div class="card mt-16" style="box-shadow:none;"><div class="card-head"><h3>Sales Trend</h3></div>${trend.length ? lineChartSVG(trend, { height: 200 }) : analyticsEmpty()}</div>`;
+    const statsHtml = `<div class="card mb-16" style="box-shadow:none;"><div class="stats-grid"><div><span class="text-muted">Revenue</span><strong>${money(Number(s.revenue || 0))}</strong></div><div><span class="text-muted">Orders</span><strong>${Number(s.orders || 0).toLocaleString()}</strong></div><div><span class="text-muted">Units</span><strong>${Number(s.units || 0).toLocaleString()}</strong></div><div><span class="text-muted">Average order value</span><strong>${money(Number(s.averageOrderValue || 0))}</strong></div></div></div>`;
+    const trendHtml = `<div class="card mt-16" style="box-shadow:none;"><div class="card-head"><h3>Sales Trend</h3></div>${trend.length ? lineChartSVG(trend, { height: 200 }) : analyticsEmpty()}</div>`;
+    let mainHtml;
+    if (state.reportType === "product") {
+      const rows = (report.products || []).slice(0, 10).map(x => [reportLabel(x), money(reportValue(x)), Number(x.orders || 0).toLocaleString(), Number(x.units || 0).toLocaleString()]);
+      mainHtml = `<div class="card chart-wrap mb-16" style="box-shadow:none;"><div class="card-head"><h3>Top Products by Revenue</h3></div>${products.length ? barChartSVG(products.slice(0, 10), { height: 220 }) : analyticsEmpty()}</div>
+        <div class="card" style="box-shadow:none;"><div class="card-head"><h3>Product Breakdown</h3></div>${statTable(rows, ["Product", "Revenue", "Orders", "Units"])}</div>`;
+    } else if (state.reportType === "marketplace") {
+      const rows = (report.marketplaces || []).slice(0, 10).map(x => [reportLabel(x), money(reportValue(x)), Number(x.orders || 0).toLocaleString(), Number(x.units || 0).toLocaleString()]);
+      mainHtml = `<div class="card chart-wrap mb-16" style="box-shadow:none;"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 220 }) : analyticsEmpty()}</div>
+        <div class="card" style="box-shadow:none;"><div class="card-head"><h3>Marketplace Breakdown</h3></div>${statTable(rows, ["Marketplace", "Revenue", "Orders", "Units"])}</div>`;
+    } else {
+      mainHtml = `<div class="two-col"><div class="card chart-wrap" style="box-shadow:none;"><div class="card-head"><h3>Revenue by Category</h3></div>${categories.length ? barChartSVG(categories, { height: 220 }) : analyticsEmpty()}</div><div class="card chart-wrap" style="box-shadow:none;"><div class="card-head"><h3>Revenue by Marketplace</h3></div>${marketplaces.length ? barChartSVG(marketplaces, { height: 220 }) : analyticsEmpty()}</div></div>`;
+    }
+    target.innerHTML = `${statsHtml}${mainHtml}${trendHtml}`;
   }).catch(error => { const target = $("#report-detail-body"); if (target) target.innerHTML = analyticsError(error); });
 }
 function initAnalyticsReports() { renderAnalytics(); }

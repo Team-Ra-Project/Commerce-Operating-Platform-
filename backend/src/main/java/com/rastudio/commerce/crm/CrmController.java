@@ -4,6 +4,7 @@ import com.rastudio.commerce.common.ApiException;
 import com.rastudio.commerce.crm.CrmDtos.*;
 import com.rastudio.commerce.security.TenantPrincipal;
 import com.rastudio.commerce.user.UserRole;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -28,6 +29,15 @@ public class CrmController {
   public List<CustomerSummaryDto> list(@AuthenticationPrincipal TenantPrincipal p, @RequestParam(required = false) String search) {
     requireRole(p, UserRole.BUSINESS_OWNER_ADMIN, UserRole.SUPPORT_CRM_AGENT, UserRole.MARKETING_MANAGER);
     return service.list(p.organizationId(), search);
+  }
+
+  /** "Add Customer" — creates a direct-store customer in the existing customer table. */
+  @PostMapping
+  @ResponseStatus(HttpStatus.CREATED)
+  public CustomerSummaryDto create(@AuthenticationPrincipal TenantPrincipal p,
+      @Valid @RequestBody AddCustomerRequest request) {
+    requireRole(p, UserRole.BUSINESS_OWNER_ADMIN, UserRole.SUPPORT_CRM_AGENT, UserRole.MARKETING_MANAGER);
+    return service.create(p.organizationId(), request);
   }
 
   @GetMapping("/{id}")

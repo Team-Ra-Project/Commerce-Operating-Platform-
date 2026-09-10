@@ -22,7 +22,10 @@ function crmHeader(activeTab, summaryText, kpiHtml) {
         <h1 class="page-title">Customer Relationship Management</h1>
         <p class="page-sub">${summaryText}</p>
       </div>
-      <div class="page-actions"><button class="btn" id="crm-export">⬇ Export customer list</button></div>
+      <div class="page-actions">
+        ${activeTab === "directory" ? `<button class="btn btn-blue" id="crm-add-customer">+ Add customer</button>` : ""}
+        <button class="btn" id="crm-export">⬇ Export customer list</button>
+      </div>
     </div>
     <div class="grid grid-4">${kpiHtml}</div>
     <div class="tabs mt-24">
@@ -72,6 +75,7 @@ function drawCrmDirectory() {
       toast(e.message || "Couldn't export customer list.", "error");
     }
   });
+  $("#crm-add-customer").addEventListener("click", openAddCustomerModal);
 
   $("#crm-tab-content").innerHTML = `
     <div class="card">
@@ -86,6 +90,76 @@ function drawCrmDirectory() {
   `;
   $("#crm-search").addEventListener("input", e => drawDirectoryRows(e.target.value.toLowerCase()));
   drawDirectoryRows("");
+}
+
+function openAddCustomerModal() {
+  openModal({
+    title: "Add customer",
+    confirmLabel: "Add customer",
+    bodyHtml: `
+      <div class="form-grid">
+        <div class="form-field full">
+          <label>Full name</label>
+          <input name="fullName" maxlength="150" required placeholder="Customer's full name">
+        </div>
+        <div class="form-field">
+          <label>Email <span class="text-muted">(optional)</span></label>
+          <input name="email" type="email" maxlength="190" placeholder="customer@example.com">
+        </div>
+        <div class="form-field">
+          <label>Phone <span class="text-muted">(optional)</span></label>
+          <input name="phone" maxlength="30" placeholder="+91 98765 43210">
+        </div>
+        <div class="form-field">
+          <label>City <span class="text-muted">(optional)</span></label>
+          <input name="city" maxlength="100" placeholder="City">
+        </div>
+        <div class="form-field">
+          <label>Country <span class="text-muted">(optional)</span></label>
+          <input name="country" maxlength="100" value="India" placeholder="Country">
+        </div>
+        <div class="form-field full">
+          <label>Primary channel</label>
+          <select name="primaryChannel">
+            <option value="DIRECT_STORE" selected>Direct store</option>
+            <option value="IN_STORE">In-store purchase</option>
+            <option value="PHONE">Phone order</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="form-field full">
+          <label>Marketing consent</label>
+          <label style="font-weight:400;font-size:13px;display:block;margin-bottom:8px;">
+            <input type="checkbox" name="emailOptIn"> Email marketing
+          </label>
+          <label style="font-weight:400;font-size:13px;display:block;">
+            <input type="checkbox" name="whatsappOptIn"> WhatsApp marketing
+          </label>
+        </div>
+      </div>
+      <p class="text-muted" style="font-size:12px;margin:14px 0 0;">
+        A customer with the same email or phone number cannot be added twice.
+      </p>
+    `,
+    onSubmit: (data) => {
+      const payload = {
+        fullName: data.fullName,
+        email: data.email || null,
+        phone: data.phone || null,
+        city: data.city || null,
+        country: data.country || null,
+        primaryChannel: data.primaryChannel || "DIRECT_STORE",
+        emailOptIn: data.emailOptIn === "on",
+        whatsappOptIn: data.whatsappOptIn === "on"
+      };
+      api.customers.create(payload)
+        .then(() => {
+          toast("Customer added to the CRM.", "success");
+          return renderCrmCustomers();
+        })
+        .catch(e => toast(e.message || "Couldn't add customer.", "error"));
+    }
+  });
 }
 
 function drawDirectoryRows(search) {

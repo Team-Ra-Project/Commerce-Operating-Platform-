@@ -381,6 +381,7 @@ const api = {
   // Customers / CRM / rule-based segments (real API)
   customers: {
     list: (search) => apiRequest(`/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    create: (payload) => apiRequest("/customers", { method: "POST", body: JSON.stringify(payload) }),
     get: (id) => apiRequest(`/customers/${id}`),
     addNote: (id, noteText) => apiRequest(`/customers/${id}/notes`, { method: "POST", body: JSON.stringify({ noteText }) }),
     exportCsv: () => apiRequestRaw("/customers/export")

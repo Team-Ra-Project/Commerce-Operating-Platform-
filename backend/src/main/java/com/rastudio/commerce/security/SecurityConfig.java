@@ -91,6 +91,11 @@ public class SecurityConfig {
 
                         .requestMatchers(
                                 HttpMethod.GET,
+                                "/api/email-tracking/**")
+                        .permitAll()
+
+                        .requestMatchers(
+                                HttpMethod.GET,
                                 "/api/users/invitation/*")
                         .permitAll()
 

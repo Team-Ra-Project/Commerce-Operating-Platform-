@@ -11,6 +11,7 @@ import com.rastudio.commerce.user.AppUserRepository;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,50 @@ public class CrmService {
             || (c.phone != null && c.phone.contains(needle)))
         .map(c -> toSummary(c, ordersByCustomer.getOrDefault(c.id, List.of())))
         .toList();
+  }
+
+  @Transactional
+  public CustomerSummaryDto create(Long organizationId, AddCustomerRequest request) {
+    String email = normalizeEmail(request.email());
+    String phone = normalizePhone(request.phone());
+
+    Customer matchingEmail = email == null ? null
+        : customers.findByOrganizationIdAndEmailIgnoreCase(organizationId, email).orElse(null);
+    Customer matchingPhone = phone == null ? null
+        : customers.findByOrganizationIdAndPhone(organizationId, phone).orElse(null);
+
+    if (matchingEmail != null || matchingPhone != null) {
+      if (matchingEmail != null && matchingPhone != null && matchingEmail.id.equals(matchingPhone.id)) {
+        throw new ApiException(HttpStatus.CONFLICT, "CUSTOMER_ALREADY_EXISTS",
+            "A customer with this email and phone already exists");
+      }
+      throw new ApiException(HttpStatus.CONFLICT, "CUSTOMER_ALREADY_EXISTS",
+          matchingEmail != null
+              ? "A customer with this email already exists"
+              : "A customer with this phone already exists");
+    }
+
+    Customer customer = new Customer();
+    customer.organizationId = organizationId;
+    customer.fullName = request.fullName().trim();
+    customer.email = email;
+    customer.phone = phone;
+    customer.city = normalizeText(request.city());
+    customer.country = normalizeText(request.country());
+    customer.primaryChannel = normalizeText(request.primaryChannel()) == null
+        ? "DIRECT_STORE" : normalizeText(request.primaryChannel());
+    customer.status = com.rastudio.commerce.customer.CustomerStatus.ACTIVE;
+    customer.whatsappOptIn = Boolean.TRUE.equals(request.whatsappOptIn());
+    customer.emailOptIn = Boolean.TRUE.equals(request.emailOptIn());
+
+    try {
+      customer = customers.saveAndFlush(customer);
+    } catch (DataIntegrityViolationException e) {
+      // Keeps duplicate protection intact if two requests arrive concurrently.
+      throw new ApiException(HttpStatus.CONFLICT, "CUSTOMER_ALREADY_EXISTS",
+          "A customer with this email or phone already exists");
+    }
+    return toSummary(customer, List.of());
   }
 
   public CustomerProfileDto profile(Long organizationId, Long customerId) {
@@ -116,6 +161,22 @@ public class CrmService {
   private Customer requireCustomer(Long organizationId, Long customerId) {
     return customers.findByIdAndOrganizationId(customerId, organizationId)
         .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CUSTOMER_NOT_FOUND", "Customer not found"));
+  }
+
+  private static String normalizeEmail(String value) {
+    String normalized = normalizeText(value);
+    return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+  }
+
+  private static String normalizePhone(String value) {
+    String normalized = normalizeText(value);
+    if (normalized == null) return null;
+    return normalized.replaceAll("[\\s()\\-]", "");
+  }
+
+  private static String normalizeText(String value) {
+    if (value == null || value.isBlank()) return null;
+    return value.trim();
   }
 
   private CustomerSummaryDto toSummary(Customer c, List<CustomerOrder> customerOrders) {

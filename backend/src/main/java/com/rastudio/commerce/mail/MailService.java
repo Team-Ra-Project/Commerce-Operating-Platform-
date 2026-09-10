@@ -1,6 +1,10 @@
 package com.rastudio.commerce.mail;
 
 import jakarta.mail.internet.MimeMessage;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -24,12 +28,14 @@ public class MailService {
     private final JavaMailSender mailSender;
     private final String fromAddress;
     private final String fromName;
+    private final String publicApiUrl;
     private final boolean smtpConfigured;
 
     public MailService(
             ObjectProvider<JavaMailSender> mailSenderProvider,
             @Value("${app.mail.from:no-reply@localhost}") String fromAddress,
             @Value("${app.mail.from-name:RA Studio Commerce Platform}") String fromName,
+            @Value("${app.public-api-url:http://localhost:8080}") String publicApiUrl,
             @Value("${spring.mail.host:}") String smtpHost,
             @Value("${spring.mail.username:}") String smtpUsername) {
 
@@ -42,6 +48,7 @@ public class MailService {
         this.mailSender = mailSenderProvider.getIfAvailable();
         this.fromAddress = fromAddress;
         this.fromName = fromName;
+        this.publicApiUrl = publicApiUrl == null ? "" : publicApiUrl.replaceAll("/+$", "");
 
         this.smtpConfigured = this.mailSender != null
                 && smtpHost != null
@@ -75,7 +82,7 @@ public class MailService {
                 roleLabel,
                 acceptUrl);
 
-        return send(toEmail, subject, html);
+        return send(toEmail, subject, html, null);
     }
 
     /**
@@ -106,7 +113,7 @@ public class MailService {
                 availableQuantity,
                 threshold);
 
-        return send(toEmail, subject, html);
+        return send(toEmail, subject, html, null);
     }
 
     private String buildLowStockHtml(
@@ -166,7 +173,7 @@ public class MailService {
 
         String subject = "Update on your return for order " + orderNumber;
         String html = buildReturnStatusHtml(customerName, orderNumber, statusLabel, message);
-        return send(toEmail, subject, html);
+        return send(toEmail, subject, html, null);
     }
 
     private String buildReturnStatusHtml(String customerName, String orderNumber, String statusLabel, String message) {
@@ -195,7 +202,16 @@ public class MailService {
      *         sending failed (never throws).
      */
     public boolean sendMarketingEmail(String toEmail, String subject, String html) {
-        return send(toEmail, subject, html);
+        return send(toEmail, subject, html, null);
+    }
+
+    /**
+     * Sends a campaign email with an open-tracking pixel and tracked HTTP links.
+     * Tracking is only added when a message-log token is supplied, so transactional
+     * and bulk emails retain their existing behavior.
+     */
+    public boolean sendMarketingEmail(String toEmail, String subject, String html, String trackingToken) {
+        return send(toEmail, subject, html, trackingToken);
     }
 
     /**
@@ -217,10 +233,10 @@ public class MailService {
                 + "<p>Hi " + safeRecipient + ",</p>"
                 + "<p>" + escape(message) + "</p>"
                 + "</div>";
-        return send(toEmail, subject, html);
+        return send(toEmail, subject, html, null);
     }
 
-    private boolean send(String toEmail, String subject, String html) {
+    private boolean send(String toEmail, String subject, String html, String trackingToken) {
         if (!smtpConfigured) {
             log.warn(
                     "SMTP is not configured. Skipping invitation email to {}. "
@@ -241,7 +257,7 @@ public class MailService {
             helper.setTo(toEmail);
             helper.setFrom(fromAddress, fromName);
             helper.setSubject(subject);
-            helper.setText(html, true);
+            helper.setText(decorateMarketingHtml(html, trackingToken), true);
 
             mailSender.send(message);
 
@@ -257,6 +273,41 @@ public class MailService {
 
             return false;
         }
+    }
+
+    private String decorateMarketingHtml(String html, String trackingToken) {
+        if (trackingToken == null || trackingToken.isBlank() || publicApiUrl.isBlank()) {
+            return html;
+        }
+
+        String tracked = rewriteLinks(html == null ? "" : html, trackingToken);
+        String openUrl = publicApiUrl + "/api/email-tracking/open/" + trackingToken;
+        String pixel = "<img src=\"" + escapeAttribute(openUrl)
+                + "\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0;width:1px;height:1px;\" />";
+
+        int bodyEnd = tracked.toLowerCase().lastIndexOf("</body>");
+        return bodyEnd >= 0
+                ? tracked.substring(0, bodyEnd) + pixel + tracked.substring(bodyEnd)
+                : tracked + pixel;
+    }
+
+    private String rewriteLinks(String html, String trackingToken) {
+        Pattern hrefPattern = Pattern.compile("(?i)(href\\s*=\\s*[\"'])(https?://[^\"']+)([\"'])");
+        Matcher matcher = hrefPattern.matcher(html);
+        StringBuffer rewritten = new StringBuffer();
+        while (matcher.find()) {
+            String destination = matcher.group(2);
+            String trackedUrl = publicApiUrl + "/api/email-tracking/click/" + trackingToken
+                    + "?url=" + URLEncoder.encode(destination, StandardCharsets.UTF_8);
+            matcher.appendReplacement(rewritten, Matcher.quoteReplacement(
+                    matcher.group(1) + escapeAttribute(trackedUrl) + matcher.group(3)));
+        }
+        matcher.appendTail(rewritten);
+        return rewritten.toString();
+    }
+
+    private String escapeAttribute(String value) {
+        return value.replace("&", "&amp;").replace("\"", "&quot;");
     }
 
     private String buildInvitationHtml(

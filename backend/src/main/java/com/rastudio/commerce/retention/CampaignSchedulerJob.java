@@ -121,6 +121,9 @@ public class CampaignSchedulerJob {
       return;
     }
 
+    // Persist first so the email has a stable tracking token before SMTP sends it.
+    messageLogs.save(logEntry);
+
     Map<String, String> mergeFields = Map.of(
         "customer_name", customer.fullName == null ? "" : customer.fullName,
         "product_name", "", // no single "the product" is well-defined for a multi-item order history; left blank
@@ -144,10 +147,14 @@ public class CampaignSchedulerJob {
         logEntry.providerStatusDetail = "Customer has not opted in to Email (or has no email on file)";
       } else {
         String rendered = templateService.render(template.content, mergeFields);
-        boolean sent = mailService.sendMarketingEmail(customer.email, campaign.name, rendered);
-        logEntry.status = sent ? MessageLogStatus.SENT : MessageLogStatus.FAILED;
-        logEntry.providerStatusDetail = sent ? null : "SMTP not configured or send failed";
-        if (sent) { campaign.sentCount = campaign.sentCount + 1; }
+        boolean sent = mailService.sendMarketingEmail(customer.email, campaign.name, rendered, logEntry.trackingToken);
+        logEntry.status = sent ? MessageLogStatus.DELIVERED : MessageLogStatus.FAILED;
+        logEntry.providerStatusDetail = sent ? "Accepted by SMTP server" : "SMTP not configured or send failed";
+        if (sent) {
+          campaign.sentCount = campaign.sentCount + 1;
+          campaign.deliveredCount = campaign.deliveredCount + 1;
+          logEntry.deliveredAt = LocalDateTime.now();
+        }
       }
     }
     logEntry.sentAt = LocalDateTime.now();

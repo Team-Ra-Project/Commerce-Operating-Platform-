@@ -47,6 +47,26 @@ function isAdmin() {
   } catch (e) { return false; }
 }
 
+function isValidFacebookAdsUrl(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const allowedHost = host === "facebook.com" || host.endsWith(".facebook.com")
+      || host === "meta.com" || host.endsWith(".meta.com");
+    return url.protocol === "https:" && allowedHost;
+  } catch (e) {
+    return false;
+  }
+}
+
+function savedFacebookAdsLink(url) {
+  if (!url) {
+    return `<span class="text-muted" style="font-size:12.5px;">No Meta/Facebook Ads link saved.</span>`;
+  }
+  return `<a class="link-action" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open saved Meta/Facebook Ads page ↗</a>`;
+}
+
 /* -------------------------------- OVERVIEW -------------------------------- */
 function renderSettingsIndex() {
   $("#content").innerHTML = settingsTabs("overview") + `<div id="settings-overview-body"><p class="text-muted">Loading…</p></div>`;
@@ -87,6 +107,19 @@ function drawSettingsOverview(config, teamList, marketplaces) {
       </div>
     </div>
 
+    <div class="card mt-24">
+      <div class="card-head"><h3>Marketing</h3></div>
+      <div class="form-field">
+        <label for="cfg-facebook-ads-url">Facebook / Meta Ads link</label>
+        <input class="text-input" id="cfg-facebook-ads-url" type="url" maxlength="500"
+          value="${escapeHtml(config.facebookAdsUrl || "")}"
+          placeholder="https://www.facebook.com/adsmanager">
+        <div class="settings-row-sub" style="margin-top:7px;">Save the Ads Manager or Meta Ads page your team uses. Use an HTTPS Facebook or Meta URL.</div>
+      </div>
+      <div id="cfg-facebook-ads-saved" style="margin-top:12px;">${savedFacebookAdsLink(config.facebookAdsUrl)}</div>
+      ${!isAdmin() ? `<p class="text-muted" style="font-size:12.5px;margin-top:14px;">Only an administrator can change marketing settings.</p>` : ""}
+    </div>
+
     <div class="grid grid-3 mt-24">
       <div class="card kpi-card"><div class="kpi-top"><span class="kpi-label">Team Members</span><div class="kpi-icon">👥</div></div><div class="kpi-value">${teamList.length}</div></div>
       <div class="card kpi-card"><div class="kpi-top"><span class="kpi-label">Connected Marketplaces</span><div class="kpi-icon">🛒</div></div><div class="kpi-value">${connectedMarketplaces}</div></div>
@@ -99,15 +132,22 @@ function drawSettingsOverview(config, teamList, marketplaces) {
   if (toggleDigest) toggleDigest.addEventListener("click", () => { state.emailDigestEnabled = !state.emailDigestEnabled; toggleDigest.classList.toggle("on"); });
   if ($("#cfg-save")) $("#cfg-save").addEventListener("click", () => {
     const btn = $("#cfg-save");
+    const facebookAdsUrl = $("#cfg-facebook-ads-url").value.trim();
+    if (!isValidFacebookAdsUrl(facebookAdsUrl)) {
+      toast("Enter a valid HTTPS Facebook or Meta Ads URL.", "error");
+      $("#cfg-facebook-ads-url").focus();
+      return;
+    }
     btn.disabled = true; btn.textContent = "Saving…";
     api.organization.saveConfig({
       syncInterval: $("#cfg-sync").value,
       currency: $("#cfg-currency").value,
       twoFactorEnabled: state.twoFactorEnabled,
-      emailDigestEnabled: state.emailDigestEnabled
-    }).then(() => {
+      emailDigestEnabled: state.emailDigestEnabled,
+      facebookAdsUrl: facebookAdsUrl || null
+    }).then((savedConfig) => {
       toast("System configuration saved.", "success");
-      btn.disabled = false; btn.textContent = "Save configuration";
+      drawSettingsOverview(savedConfig, teamList, marketplaces);
     }).catch((error) => {
       toast(error.message || "Couldn't save configuration.", "error");
       btn.disabled = false; btn.textContent = "Save configuration";
